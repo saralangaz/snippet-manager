@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snippet Manager</title>
+<script>
+// Set the theme before first paint so there's no flash of the wrong theme.
+(function () {
+  var t = localStorage.getItem('snippet-manager-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<style>
+:root, :root[data-theme="dark"] {
+  --bg:        #1b1c22;
+  --surface:   #232430;
+  --surface-2: #2a2b38;
+  --cmd-bg:    #1a1b23;
+  --border:    #383a48;
+  --border-2:  #46485a;
+  --accent:    #4fd1ff;
+  --accent-dim:#2f8fb0;
+  --accent-bg: rgba(79,209,255,.10);
+  --accent-hover:#6bd9ff;
+  --on-accent: #0b1418;
+  --green:     #7ec488;
+  --amber:     #d9a85c;
+  --param-bg:  rgba(217,168,92,.10);
+  --param-border: rgba(217,168,92,.25);
+  --red:       #e2726f;
+  --text:      #e6e7ee;
+  --text-dim:  #a4a6b3;
+  --text-muted:#6d6f7d;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+:root[data-theme="light"] {
+  --bg:        #f6f4f1;
+  --surface:   #fbfaf8;
+  --surface-2: #f0eee8;
+  --cmd-bg:    #eeece5;
+  --border:    #ddd8ce;
+  --border-2:  #c8c1b2;
+  --accent:    #6a3fc4;
+  --accent-dim:#8a68d6;
+  --accent-bg: rgba(106,63,196,.09);
+  --accent-hover:#5a34a8;
+  --on-accent: #ffffff;
+  --green:     #2b2d33;
+  --amber:     #6a3fc4;
+  --param-bg:  rgba(106,63,196,.09);
+  --param-border: rgba(106,63,196,.25);
+  --red:       #c14b46;
+  --text:      #232128;
+  --text-dim:  #5a5768;
+  --text-muted:#8a8695;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px}
+
+.app{display:flex;flex-direction:column;height:100vh}
+
+/* ── HEADER ── */
+.vault-header{padding:0 20px;height:44px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.vault-title{font-weight:600;font-size:13px;color:var(--text)}
+.vault-stats{margin-left:auto;font-size:11px;color:var(--text-muted)}
+.vault-stats b{color:var(--text-dim);font-weight:600}
+.theme-toggle{flex-shrink:0;width:28px;height:28px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .1s,color .1s}
+.theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── MAIN ── */
+.vault-main{flex:1;overflow-y:auto;padding:16px 20px 24px}
+
+/* ── SEARCH — the dominant element ── */
+.search-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.search-wrap{flex:1;position:relative}
+.search-prefix{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:16px;pointer-events:none}
+.search-input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px 14px 12px 40px;color:var(--text);font-family:var(--sans);font-size:16px;outline:none;transition:border-color .1s}
+.search-input:focus{border-color:var(--accent)}
+.search-input::placeholder{color:var(--text-muted)}
+.icon-add-btn{flex-shrink:0;width:44px;height:44px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:14px;cursor:pointer;transition:border-color .1s,color .1s;display:flex;align-items:center;justify-content:center}
+.icon-add-btn:hover{border-color:var(--accent);color:var(--accent)}
+.icon-add-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+
+.paste-row{display:none;align-items:center;gap:8px;margin-bottom:14px}
+.paste-row.open{display:flex}
+.paste-input{flex:1;background:var(--surface);border:1px solid var(--accent-dim);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none}
+.paste-input::placeholder{color:var(--text-muted)}
+.paste-review-btn{flex-shrink:0;padding:9px 14px;background:var(--accent);border:1px solid var(--accent);border-radius:6px;color:var(--on-accent);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer}
+.paste-review-btn:hover{background:var(--accent-hover)}
+.paste-hint{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.paste-hint kbd{background:var(--surface-2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--text-dim);font-family:var(--mono);font-size:10px}
+
+/* ── CATEGORY FILTER ── */
+.cat-filters{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}
+.cat-filter{display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:20px;color:var(--text-dim);font-family:var(--sans);font-size:12px;cursor:pointer;transition:border-color .1s,color .1s}
+.cat-filter:hover{border-color:var(--border-2);color:var(--text)}
+.cat-filter.active{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.cat-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* ── SECTIONS / GRID ── */
+.cat-section{margin-bottom:22px}
+.cat-section-header{display:flex;align-items:center;gap:7px;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.cat-section-title{font-size:12px;font-weight:600;color:var(--text-dim)}
+.cat-section-count{font-size:11px;color:var(--text-muted)}
+.snip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px}
+
+.snip-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color .1s}
+.snip-card:hover{border-color:var(--border-2)}
+.snip-card-header{padding:10px 12px 8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.snip-title-row{display:flex;align-items:center;gap:6px}
+.snip-title{font-size:13px;color:var(--text);font-weight:500}
+.snip-desc{font-size:11px;color:var(--text-muted);margin-top:3px;line-height:1.4}
+.snip-actions{display:flex;gap:3px;opacity:0;transition:opacity .1s}
+.snip-card:hover .snip-actions{opacity:1}
+.icon-btn{background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--text-muted);font-size:11px;transition:border-color .1s,color .1s}
+.icon-btn:hover{color:var(--text)}
+.icon-btn.danger:hover{color:var(--red);border-color:var(--red)}
+
+/* Command block — the visual anchor */
+.snip-cmd-wrap{background:var(--cmd-bg);border-top:1px solid var(--border);padding:9px 12px;overflow-x:auto}
+.snip-cmd{font-family:var(--mono);font-size:12.5px;color:var(--green);line-height:1.5;white-space:pre}
+.param-token{color:var(--amber)}
+
+.snip-footer{padding:6px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.copy-btn{padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-dim);font-family:var(--sans);font-size:11px;cursor:pointer;transition:border-color .1s,color .1s}
+.copy-btn:hover{border-color:var(--accent-dim);color:var(--accent)}
+.copy-btn.copied{border-color:var(--green);color:var(--green)}
+.use-btn{padding:4px 10px;background:transparent;border:1px solid var(--accent-dim);border-radius:4px;color:var(--accent);font-family:var(--sans);font-size:11px;cursor:pointer;transition:background .1s}
+.use-btn:hover{background:var(--accent-bg)}
+
+/* ── MODALS ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,10,14,.6);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .15s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border:1px solid var(--border-2);border-radius:8px;width:480px;max-width:95vw}
+.modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:13px;font-weight:600;color:var(--text)}
+.modal-close{background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:11px;padding:3px 8px;font-family:var(--sans)}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:16px 18px}
+.m-hint{font-size:11px;color:var(--text-muted);margin-top:4px}
+.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.footer-hint{font-size:11px;color:var(--text-muted)}
+.footer-hint kbd{background:var(--surface-2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--text-dim);font-family:var(--mono);font-size:10px}
+.footer-actions{display:flex;gap:8px}
+.btn-cancel{padding:7px 14px;background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--text-dim);font-family:var(--sans);font-size:12px;cursor:pointer}
+.btn-cancel:hover{border-color:var(--border-2);color:var(--text)}
+.btn-confirm{padding:7px 16px;background:var(--accent);border:1px solid var(--accent);border-radius:5px;color:var(--on-accent);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer}
+.btn-confirm:hover{background:var(--accent-hover)}
+.btn-confirm:disabled{opacity:.4;cursor:not-allowed}
+
+.param-rows{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+.param-row{display:flex;align-items:center;gap:8px}
+.param-lbl{font-family:var(--mono);font-size:11px;color:var(--amber);min-width:100px}
+.param-val{flex:1;background:var(--cmd-bg);border:1px solid var(--border);border-radius:5px;padding:6px 8px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none}
+.param-val:focus{border-color:var(--accent)}
+.cmd-preview{background:var(--cmd-bg);border:1px solid var(--border);border-radius:5px;padding:9px 11px;font-size:12.5px;color:var(--green);font-family:var(--mono);white-space:pre;overflow-x:auto;line-height:1.5;margin-bottom:12px}
+
+/* ── IMPORT DIALOG ── */
+#modal-import .modal{width:560px}
+.import-body-text{font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:14px}
+.import-btn{width:100%;padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px}
+.import-btn:hover{border-color:var(--accent);color:var(--accent)}
+.import-btn .icon{font-size:14px}
+.import-paste-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.import-paste-btn{background:none;border:none;color:var(--accent);font-family:var(--sans);font-size:11px;cursor:pointer;padding:0}
+.import-paste-btn:hover{text-decoration:underline}
+.import-textarea{width:100%;min-height:120px;background:var(--cmd-bg);border:1px solid var(--border);border-radius:5px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;resize:vertical}
+.import-textarea:focus{border-color:var(--accent)}
+.import-textarea::placeholder{color:var(--text-muted)}
+.import-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--text-muted);font-size:11px}
+.import-divider::before,.import-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── REVIEW LIST (single quick-add or bulk import) ── */
+#modal-review .modal{width:640px}
+.review-legend{font-size:11px;color:var(--text-muted);margin-bottom:10px}
+.review-rows{display:flex;flex-direction:column;gap:8px;max-height:min(60vh,420px);overflow-y:auto}
+.cand-row{display:flex;gap:10px;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--cmd-bg);align-items:flex-start;transition:opacity .1s}
+.cand-row.excluded{opacity:.4}
+.cand-row.excluded.dup-row{opacity:.75}
+.cand-check{margin-top:5px;flex-shrink:0}
+.cand-body{flex:1;min-width:0}
+.cand-fields{display:flex;gap:6px;margin-bottom:6px}
+.cand-title{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none}
+.cand-category{width:150px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none}
+.cand-title:focus,.cand-category:focus{border-color:var(--accent)}
+.cand-title-empty{border-color:var(--red)}
+.cand-title-empty:focus{border-color:var(--accent)}
+.cand-desc{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;margin-bottom:6px}
+.cand-desc:focus{border-color:var(--accent)}
+.cand-desc::placeholder{color:var(--text-muted)}
+.cand-cmd{font-family:var(--mono);font-size:11.5px;color:var(--green);white-space:pre;overflow-x:auto;padding:2px 0}
+.cand-error{font-size:11px;margin-top:5px}
+.cand-error.hard{color:var(--red)}
+.cand-error.soft{color:var(--amber)}
+.cand-error.dup{color:var(--amber);font-weight:600}
+.cmd-tok{cursor:pointer;border-radius:3px;transition:background .1s}
+.cmd-tok:hover{background:var(--accent-bg)}
+.cmd-tok.is-var{color:var(--amber)}
+.cmd-tok.is-base{cursor:default;color:var(--green)}
+.cmd-tok.is-base:hover{background:none}
+
+.toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border-2);border-radius:6px;padding:9px 16px;font-size:12px;color:var(--text);z-index:500;transform:translateY(8px);opacity:0;transition:all .15s;pointer-events:none;font-family:var(--sans)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-color:var(--green);color:var(--green)}
+.toast.warn{border-color:var(--red);color:var(--red)}
+
+.empty-state{text-align:center;padding:48px 20px;color:var(--text-muted);font-size:14px}
+.empty-icon{font-size:32px;margin-bottom:10px;opacity:.5}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="vault-header">
+    <div class="vault-title">Snippet Manager</div>
+    <div class="vault-stats" id="vault-stats"></div>
+    <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"></button>
+  </header>
+
+  <main class="vault-main">
+    <div class="search-row">
+      <div class="search-wrap">
+        <span class="search-prefix">⌕</span>
+        <input class="search-input" id="search-input" placeholder="Search snippets..."
+          oninput="S.filter=this.value;renderVault()">
+      </div>
+      <button class="icon-add-btn" id="expand-add-btn" onclick="togglePasteRow()" title="Add a snippet">+</button>
+      <button class="icon-add-btn" onclick="openImportDialog()" title="Import from a JSON file">⇪</button>
+    </div>
+    <div class="paste-row" id="paste-row">
+      <input class="paste-input" id="paste-input" placeholder="Paste a command, then Enter to review..." onkeydown="onPasteKeydown(event)">
+      <button class="paste-review-btn" onclick="reviewPaste()">Review</button>
+    </div>
+    <div class="cat-filters" id="cat-filters"></div>
+    <div id="snip-content"></div>
+  </main>
+</div>
+
+<!-- MODAL: use snippet (fill params) -->
+<div class="modal-overlay" id="modal-use">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="use-title">Fill in parameters</span>
+      <button class="modal-close" onclick="closeModal('modal-use')">Esc</button>
+    </div>
+    <div class="modal-body">
+      <div class="param-rows" id="param-rows"></div>
+      <div class="m-hint" style="margin-bottom:6px">Resolved command</div>
+      <div class="cmd-preview" id="cmd-preview"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="footer-hint"><kbd>Enter</kbd> to copy</span>
+      <div class="footer-actions">
+        <button class="btn-cancel" onclick="closeModal('modal-use')">Cancel</button>
+        <button class="btn-confirm" onclick="copyResolved()">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: import — paste AI-generated JSON, or upload a .json file -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Import snippets</span>
+      <button class="modal-close" onclick="closeModal('modal-import')">Esc</button>
+    </div>
+    <div class="modal-body">
+      <div class="import-body-text">
+        Copy the prompt into any AI assistant along with the commands you want saved,
+        then paste its JSON reply below.
+      </div>
+      <button class="import-btn" onclick="copyAiPrompt()" style="margin-bottom:12px"><span class="icon">⧉</span> Copy AI prompt</button>
+      <div class="import-paste-row">
+        <label style="font-size:11px;color:var(--text-dim)">Paste JSON here</label>
+        <button class="import-paste-btn" onclick="pasteFromClipboard()">Paste from clipboard</button>
+      </div>
+      <textarea class="import-textarea" id="import-textarea" placeholder='[{"category": "...", "title": "...", "description": "...", "command": "..."}]'></textarea>
+      <div class="import-divider"><span>or</span></div>
+      <button class="import-btn" onclick="document.getElementById('import-file-input').click()"><span class="icon">⇪</span> Choose a .json file…</button>
+      <input type="file" id="import-file-input" accept=".json,application/json" style="display:none" onchange="onImportFileChosen(event)">
+    </div>
+    <div class="modal-footer">
+      <span class="footer-hint">Nothing is saved until you review and confirm</span>
+      <div class="footer-actions">
+        <button class="btn-cancel" onclick="closeModal('modal-import')">Cancel</button>
+        <button class="btn-confirm" onclick="importFromTextarea()">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: review before saving — single quick-add or bulk import -->
+<div class="modal-overlay" id="modal-review">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="review-title">Review before saving</span>
+      <button class="modal-close" onclick="closeModal('modal-review')">Esc</button>
+    </div>
+    <div class="modal-body">
+      <div class="review-legend" id="review-legend">Amber words are guessed variables. Click any word to toggle it.</div>
+      <div class="review-rows" id="review-rows"></div>
+    </div>
+    <div class="modal-footer">
+      <span class="footer-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to save</span>
+      <div class="footer-actions">
+        <button class="btn-cancel" onclick="closeModal('modal-review')">Cancel</button>
+        <button class="btn-confirm" id="review-confirm" onclick="saveReview()">Add <span id="review-count">0</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="logic.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════
+const S = {
+  snippets: { categories: [] },
+  activeCat: 'all',
+  filter: '',
+  activeSnip: null,
+};
+let _candidates = [];
+
+// Muted, low-saturation palette for category dots — decorative metadata,
+// not interactive elements, so they sit outside the single-accent rule.
+// The light variant is shifted darker/more saturated so dots stay visible
+// against the off-white background. Categories are fully dynamic (an import
+// can introduce a brand new one at any time), so colors are assigned by
+// hashing the category label and persisted in localStorage — stable across
+// sessions regardless of what order categories happen to load in.
+const DOT_COLORS_DARK  = ['#6fa8d6','#7ec48f','#d9a85c','#c98fc2','#6fc4c0','#c98f8f','#9aa8d6','#a8c46f','#d6b06f','#8f9ec4','#c4a8d6','#8fc4a0'];
+const DOT_COLORS_LIGHT = ['#2f6fae','#2f8f57','#a97a1e','#9c4f92','#2f8f8a','#a94f4f','#5a6fae','#6f8f2f','#a97a3f','#4f5f9c','#7a4fae','#3f8f5a'];
+
+function getCategoryColorMap() {
+  try { return JSON.parse(localStorage.getItem('snippet-manager-category-colors') || '{}'); }
+  catch (e) { return {}; }
+}
+
+function catColor(label) {
+  const palette = getTheme() === 'light' ? DOT_COLORS_LIGHT : DOT_COLORS_DARK;
+  const map = getCategoryColorMap();
+  let idx = map[label];
+  if (idx === undefined) {
+    idx = hashString(label) % palette.length;
+    map[label] = idx;
+    localStorage.setItem('snippet-manager-category-colors', JSON.stringify(map));
+  }
+  return palette[idx % palette.length];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// THEME
+// ══════════════════════════════════════════════════════════════════════════
+function getTheme() { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+
+function applyThemeIcon() {
+  document.getElementById('theme-toggle').textContent = getTheme() === 'dark' ? '☀' : '☾';
+}
+
+function toggleTheme() {
+  const next = getTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('snippet-manager-theme', next);
+  applyThemeIcon();
+  renderVault();
+}
+
+// escapeHtml/escapeAttr, suggestCategoryLabel, and the variable-guessing
+// engine below all live in logic.js (loaded above) — pure, DOM-free, and
+// unit tested there. This block only has the DOM/state-coupled code.
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════════════
+async function init() {
+  applyThemeIcon();
+  S.snippets = await fetch('/api/snippets').then(r => r.json());
+  renderVault();
+  document.getElementById('search-input').focus();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════════════════
+function allSnippets() {
+  return (S.snippets.categories || []).flatMap(c => c.snippets.map(s => ({ ...s, _cat: c.label, _catId: c.id })));
+}
+
+function filteredSnippets() {
+  const q = S.filter.trim().toLowerCase();
+  return allSnippets().filter(s => {
+    const catMatch = S.activeCat === 'all' || s._catId === S.activeCat;
+    const qMatch = !q || s.title.toLowerCase().includes(q) || s.command.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q);
+    return catMatch && qMatch;
+  });
+}
+
+function cardHtml(s, dotColor) {
+  const hasParams = s.params?.length > 0;
+  const cmdHtml = escapeHtml(s.command).replace(/\{\{(\w+)\}\}/g, '<span class="param-token">{{$1}}</span>');
+  return `<div class="snip-card">
+    <div class="snip-card-header">
+      <div>
+        <div class="snip-title-row">
+          <span class="cat-dot" style="background:${dotColor}" title="${escapeHtml(s._cat)}"></span>
+          <span class="snip-title">${escapeHtml(s.title)}</span>
+        </div>
+        ${s.description ? `<div class="snip-desc">${escapeHtml(s.description)}</div>` : ''}
+      </div>
+      <div class="snip-actions">
+        <button class="icon-btn danger" onclick="deleteSnippet('${s.id}')">✕</button>
+      </div>
+    </div>
+    <div class="snip-cmd-wrap"><div class="snip-cmd">${cmdHtml}</div></div>
+    <div class="snip-footer">
+      <button class="copy-btn" id="copy-${s.id}" onclick="copySnip('${s.id}')">Copy</button>
+      ${hasParams ? `<button class="use-btn" onclick="openUseModal('${s.id}')">Use</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderVault() {
+  const cats = S.snippets.categories || [];
+  const total = allSnippets().length;
+  document.getElementById('vault-stats').innerHTML = `<b>${total}</b> snippets &nbsp;·&nbsp; <b>${cats.length}</b> categories`;
+
+  document.getElementById('cat-filters').innerHTML = [{ id: 'all', label: 'All' }, ...cats].map(c => {
+    const dot = c.id === 'all' ? '' : `<span class="cat-dot" style="background:${catColor(c.label)}"></span>`;
+    return `<button class="cat-filter ${S.activeCat === c.id ? 'active' : ''}" onclick="setCat('${escapeAttr(c.id)}')">${dot}${escapeHtml(c.label)}</button>`;
+  }).join('');
+
+  const filtered = filteredSnippets();
+  const content = document.getElementById('snip-content');
+  if (!filtered.length) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-icon">⌕</div><div>No snippets found</div>
+      ${S.filter.trim() ? '<div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Click + next to search to add it</div>' : ''}</div>`;
+  } else if (S.activeCat === 'all' && !S.filter.trim()) {
+    // Grouped view: category shown once as a section header, not repeated per card.
+    content.innerHTML = cats.filter(c => c.snippets.length).map(c => {
+      const dot = catColor(c.label);
+      const items = filtered.filter(s => s._catId === c.id);
+      if (!items.length) return '';
+      return `<div class="cat-section">
+        <div class="cat-section-header">
+          <span class="cat-dot" style="background:${dot}"></span>
+          <span class="cat-section-title">${escapeHtml(c.label)}</span>
+          <span class="cat-section-count">${items.length}</span>
+        </div>
+        <div class="snip-grid">${items.map(s => cardHtml(s, dot)).join('')}</div>
+      </div>`;
+    }).join('');
+  } else {
+    // Flat, filtered view — category indicated per-card via the dot only.
+    content.innerHTML = `<div class="snip-grid">${filtered.map(s => cardHtml(s, catColor(s._cat))).join('')}</div>`;
+  }
+
+  document.getElementById('category-options').innerHTML = cats.map(c => `<option value="${escapeAttr(c.label)}">`).join('');
+}
+
+function setCat(id) { S.activeCat = id; renderVault(); }
+
+function findSnip(id) {
+  for (const c of S.snippets.categories) {
+    const s = c.snippets.find(s => s.id === id);
+    if (s) return s;
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COPY / USE
+// ══════════════════════════════════════════════════════════════════════════
+function copySnip(id) {
+  const s = findSnip(id);
+  if (!s) return;
+  if (s.params?.length) { openUseModal(id); return; }
+  navigator.clipboard.writeText(s.command).then(() => {
+    const btn = document.getElementById(`copy-${id}`);
+    if (btn) { btn.classList.add('copied'); btn.textContent = 'Copied'; setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'Copy'; }, 1500); }
+    showToast('Copied to clipboard', 'ok');
+  });
+}
+
+function openUseModal(id) {
+  S.activeSnip = findSnip(id);
+  if (!S.activeSnip) return;
+  document.getElementById('use-title').textContent = S.activeSnip.title;
+  document.getElementById('param-rows').innerHTML = (S.activeSnip.params || []).map(p => `
+    <div class="param-row">
+      <span class="param-lbl">{{${p.name}}}</span>
+      <input class="param-val" data-param="${p.name}" placeholder="${p.placeholder || p.name}" oninput="updatePreview()">
+    </div>`).join('');
+  updatePreview();
+  openModal('modal-use');
+  setTimeout(() => { const f = document.querySelector('[data-param]'); if (f) f.focus(); }, 100);
+}
+
+function updatePreview() {
+  if (!S.activeSnip) return;
+  let cmd = S.activeSnip.command;
+  document.querySelectorAll('[data-param]').forEach(i => {
+    cmd = cmd.replace(new RegExp(`\\{\\{${i.dataset.param}\\}\\}`, 'g'), i.value || `{{${i.dataset.param}}}`);
+  });
+  document.getElementById('cmd-preview').textContent = cmd;
+}
+
+function copyResolved() {
+  navigator.clipboard.writeText(document.getElementById('cmd-preview').textContent).then(() => {
+    showToast('Copied to clipboard', 'ok');
+    closeModal('modal-use');
+  });
+}
+
+async function deleteSnippet(id) {
+  if (!confirm('Delete this snippet?')) return;
+  const res = await fetch(`/api/snippets/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    S.snippets = await fetch('/api/snippets').then(r => r.json());
+    renderVault();
+    showToast('Snippet deleted');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QUICK ADD — "+" — single command, light guess, review, confirm
+// (guessCandidateSegments / parseMarkedCommandToSegments / etc. — logic.js)
+// ══════════════════════════════════════════════════════════════════════════
+function togglePasteRow() {
+  const row = document.getElementById('paste-row');
+  const btn = document.getElementById('expand-add-btn');
+  const opening = !row.classList.contains('open');
+  row.classList.toggle('open', opening);
+  btn.classList.toggle('active', opening);
+  if (opening) setTimeout(() => document.getElementById('paste-input').focus(), 50);
+}
+
+function onPasteKeydown(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  reviewPaste();
+}
+
+// Exact-match check against everything already saved — mirrors the
+// server-side check in app.py so duplicates are flagged before the user
+// even hits confirm, not just rejected silently after.
+function commandAlreadyExists(command) {
+  const norm = command.trim();
+  return allSnippets().some(s => s.command.trim() === norm);
+}
+
+function reviewPaste() {
+  const input = document.getElementById('paste-input');
+  const command = input.value.trim();
+  if (!command) return;
+  const isDup = commandAlreadyExists(command);
+  _candidates = [{
+    command,
+    title: '', // never default to the raw command — left empty and required
+    category: suggestCategoryLabel(command),
+    description: '',
+    include: !isDup,
+    segments: guessCandidateSegments(command),
+    error: isDup ? 'Already in your library' : null,
+    errorLevel: 'dup',
+  }];
+  openReview('Review before saving', 'Amber words are guessed variables. Click any word to toggle it.');
+  input.value = '';
+  if (document.getElementById('paste-row').classList.contains('open')) togglePasteRow();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// IMPORT — AI-generated JSON, reviewed through the same list UI
+// ══════════════════════════════════════════════════════════════════════════
+const AI_PROMPT = `I'm building a snippet library for a developer tool called Snippet Manager.
+Generate a JSON array of snippet objects for the commands I give you below.
+
+For each command, output an object with exactly these fields:
+- "category": the most specific, recognizable category for the tool or ecosystem this command actually belongs to — e.g. "Terraform", "AWS CLI", "Azure CLI", "Kubernetes", "Docker", "Git", "Python", "JavaScript/Node", "Rust", "Go", "SQL", "API/cURL". Use the tool's real, commonly-known name, short and consistent (don't invent variant spellings — always "AWS CLI", never "aws-cli" or "Amazon CLI"). Only use the generic "Bash" category when the command is a plain shell builtin or Unix utility with no specific tool or ecosystem behind it (e.g. \`cd\`, \`ls\`, \`grep\`, \`export\` on its own) — not as a fallback for anything you don't immediately recognize. If you genuinely don't recognize the tool, use your best judgment for a short, proper category name rather than defaulting to Bash.
+- "title": a short, human-readable name (3-6 words, sentence case, no trailing period) describing what the command does. Never just repeat the raw command as the title.
+- "description": one short sentence explaining what it does and when you'd use it.
+- "command": the command with the variable parts replaced by {{descriptive_placeholder}} names. Only mark something as variable if it would genuinely differ between uses — fixed parts of a path, fixed flags, or fixed subcommands stay as literal text. Use descriptive placeholder names ({{namespace}}, {{branch_name}}, {{venv_name}}), not generic ones like {{path}} unless nothing more specific applies.
+
+Two worked examples so you match the pattern:
+
+Input: \`kubectl logs mypod -n prod --tail=50\`
+Output: {"category": "Kubernetes", "title": "Tail pod logs", "description": "Shows the last N log lines from a pod in a namespace.", "command": "kubectl logs {{pod}} -n {{namespace}} --tail={{lines}}"}
+
+Input: \`source venv/bin/activate\`
+Output: {"category": "Python", "title": "Activate virtualenv", "description": "Activates a Python virtual environment in the current shell.", "command": "source {{venv_name}}/bin/activate"}
+(note: "/bin/activate" is a fixed suffix — only the venv folder name is variable)
+
+Output ONLY a valid JSON array. No explanation, no markdown code fences, no extra text before or after it.
+
+Here are my commands:
+[paste your commands below, one per line — or instead of commands, just describe the domain and ask me to suggest a set of common ones, e.g. "give me 15 common Terraform commands"]`;
+
+function openImportDialog() {
+  document.getElementById('import-textarea').value = '';
+  openModal('modal-import');
+  setTimeout(() => document.getElementById('import-textarea').focus(), 50);
+}
+
+function copyAiPrompt() {
+  navigator.clipboard.writeText(AI_PROMPT).then(() => showToast('Prompt copied to clipboard', 'ok'));
+}
+
+function pasteFromClipboard() {
+  navigator.clipboard.readText()
+    .then(text => { document.getElementById('import-textarea').value = text; })
+    .catch(() => showToast('Clipboard access denied — paste manually instead', 'warn'));
+}
+
+// Pasting straight from the AI chat is the primary path — parses
+// immediately client-side, no save-to-disk step in between. File upload
+// (below) is the fallback for sharing a pre-made pack as a file.
+function importFromTextarea() {
+  const text = document.getElementById('import-textarea').value;
+  if (!text.trim()) { showToast('Paste some JSON first', 'warn'); return; }
+  parseAndReviewImport(text);
+}
+
+function onImportFileChosen(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // allow re-choosing the same file later
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => parseAndReviewImport(reader.result);
+  reader.readAsText(file);
+}
+
+function parseAndReviewImport(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    showToast('That doesn’t look like valid JSON', 'warn');
+    return;
+  }
+  if (!Array.isArray(data)) {
+    showToast('Expected a JSON array of snippets', 'warn');
+    return;
+  }
+  if (!data.length) {
+    showToast('No snippets found in that JSON', 'warn');
+    return;
+  }
+  buildImportCandidates(data);
+  closeModal('modal-import');
+  openReview('Review import', 'Rows with a red border are missing a required field.');
+}
+
+// Categories are dynamic — any non-empty string is valid, no fixed list to
+// check against. The backend creates a new category from whatever label
+// shows up, so "Terraform" or "Rust" just works the first time it appears.
+function buildImportCandidates(entries) {
+  const seenInBatch = new Set();
+  _candidates = entries.map(entry => {
+    const command = typeof entry.command === 'string' ? entry.command.trim() : '';
+    const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+    const description = typeof entry.description === 'string' ? entry.description.trim() : '';
+    const category = typeof entry.category === 'string' ? entry.category.trim() : '';
+    const hardError = !command || !title || !category;
+    // Catch duplicates both against what's already saved and against
+    // earlier rows in this same import (e.g. the AI listed the same
+    // command twice) — either way it shouldn't get imported twice.
+    const isDup = !hardError && (commandAlreadyExists(command) || seenInBatch.has(command));
+    if (!hardError) seenInBatch.add(command);
+    return {
+      command,
+      title,
+      category,
+      description,
+      include: !hardError && !isDup,
+      segments: parseMarkedCommandToSegments(command),
+      error: hardError ? 'Missing title, category, or command' : (isDup ? 'Already in your library' : null),
+      errorLevel: hardError ? 'hard' : 'dup',
+    };
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// REVIEW LIST — shared by quick-add (1 row) and import (N rows)
+// ══════════════════════════════════════════════════════════════════════════
+function openReview(title, legend) {
+  document.getElementById('review-title').textContent = title;
+  document.getElementById('review-legend').textContent = legend;
+  renderCandidates();
+  openModal('modal-review');
+}
+
+function renderTokenSpan(ci, si, seg) {
+  if (seg.isWhitespace) return seg.text;
+  const text = escapeHtml(seg.text);
+  if (seg.isBase) return `<span class="cmd-tok is-base">${text}</span>`;
+  const cls = seg.isVar ? 'cmd-tok is-var' : 'cmd-tok';
+  const label = seg.isVar ? ` title="{{${escapeAttr(seg.varName)}}} — click to make literal"` : ' title="click to mark as a variable"';
+  return `<span class="${cls}"${label} onclick="toggleToken(${ci},${si})">${text}</span>`;
+}
+
+function renderCandidates() {
+  const rows = document.getElementById('review-rows');
+  rows.innerHTML = _candidates.map((c, ci) => {
+    const cmdHtml = c.command.trim()
+      ? c.segments.map((seg, si) => renderTokenSpan(ci, si, seg)).join('')
+      : '<span style="color:var(--red)">No command</span>';
+    const rowClass = c.include ? '' : (c.errorLevel === 'dup' ? 'excluded dup-row' : 'excluded');
+    return `<div class="cand-row ${rowClass}">
+      <input type="checkbox" class="cand-check" ${c.include ? 'checked' : ''} onchange="toggleCandidate(${ci})">
+      <div class="cand-body">
+        <div class="cand-fields">
+          <input class="cand-title ${c.title.trim() ? '' : 'cand-title-empty'}" value="${escapeAttr(c.title)}" placeholder="Title (required)" oninput="updateCandidate(${ci},'title',this.value)">
+          <input class="cand-category" list="category-options" value="${escapeAttr(c.category)}" placeholder="Category" oninput="updateCandidate(${ci},'category',this.value)">
+        </div>
+        <input class="cand-desc" value="${escapeAttr(c.description)}" placeholder="Description (optional)" oninput="updateCandidate(${ci},'description',this.value)">
+        <div class="cand-cmd">${cmdHtml}</div>
+        ${c.error ? `<div class="cand-error ${c.errorLevel}">${c.errorLevel === 'dup' ? '⚠ ' : ''}${escapeHtml(c.error)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  updateReviewCount();
+}
+
+// Toggling a checkbox or a command token is a discrete click, safe to fully
+// re-render — unlike title/category typing, there's no cursor position to lose.
+function toggleCandidate(i) {
+  _candidates[i].include = !_candidates[i].include;
+  renderCandidates();
+}
+
+function toggleToken(ci, si) {
+  const seg = _candidates[ci].segments[si];
+  if (seg.isVar) {
+    seg.isVar = false;
+    seg.varName = null;
+  } else {
+    const used = new Set(_candidates[ci].segments.filter(s => s.isVar).map(s => s.varName));
+    const prevTok = [..._candidates[ci].segments.slice(0, si)].reverse().find(s => !s.isWhitespace)?.text || '';
+    const prevIsFlag = prevTok.startsWith('-') && prevTok !== '--';
+    seg.isVar = true;
+    seg.varName = uniqueName(prevIsFlag ? nameForFlag(prevTok) : genericNameForToken(seg.text), used);
+  }
+  renderCandidates();
+}
+
+// Typing in title/category/description must NOT re-render the row list —
+// that would blow away focus and cursor position on every keystroke. Just
+// mutate the backing array and update the (cheap) count separately.
+function updateCandidate(i, key, value) {
+  _candidates[i][key] = value;
+  if (key === 'title') updateReviewCount();
+}
+
+function updateReviewCount() {
+  const included = _candidates.filter(c => c.include);
+  const missingRequired = included.some(c => !c.title.trim() || !c.command.trim() || !c.category.trim());
+  document.getElementById('review-count').textContent = included.length;
+  document.getElementById('review-confirm').disabled = included.length === 0 || missingRequired;
+}
+
+async function saveReview() {
+  const toSave = _candidates.filter(c => c.include);
+  if (!toSave.length) return;
+  if (toSave.some(c => !c.title.trim() || !c.command.trim() || !c.category.trim())) {
+    showToast('Every included snippet needs a title, category, and command', 'warn');
+    renderCandidates();
+    return;
+  }
+  // One request for the whole batch, saved as a single atomic write on the
+  // server — firing one POST per snippet in parallel raced multiple
+  // unsynchronized read-modify-write cycles against the same file and could
+  // corrupt it. The server also does its own exact-match duplicate check
+  // (the client-side one above is a heads-up, not the enforcement) and
+  // reports back which commands it skipped instead of creating a duplicate.
+  const res = await fetch('/api/snippets/bulk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSave.map(c => ({
+      command: segmentsToCommand(c.segments),
+      title: c.title, category: c.category, description: c.description,
+    }))),
+  });
+  if (!res.ok) {
+    showToast('Failed to save snippets', 'warn');
+    return;
+  }
+  const { created, skipped } = await res.json();
+  S.snippets = await fetch('/api/snippets').then(r => r.json());
+  closeModal('modal-review');
+  renderVault();
+  let msg = created.length ? `Added ${created.length} snippet${created.length === 1 ? '' : 's'}` : 'Nothing new to add';
+  if (skipped.length) msg += ` — ${skipped.length} already saved, skipped`;
+  showToast(msg, created.length ? 'ok' : 'warn');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// KEYBOARD-FIRST
+// ══════════════════════════════════════════════════════════════════════════
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast show ${type}`;
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  const typing = tag === 'input' || tag === 'textarea';
+
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    if (document.getElementById('paste-row').classList.contains('open')) togglePasteRow();
+    return;
+  }
+  if (e.key === 'Enter' && document.getElementById('modal-use').classList.contains('open')) {
+    copyResolved();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && document.getElementById('modal-review').classList.contains('open')) {
+    saveReview();
+    return;
+  }
+  if (!typing && (e.key === 'n' || e.key === 'N')) {
+    e.preventDefault();
+    if (!document.getElementById('paste-row').classList.contains('open')) togglePasteRow();
+    else document.getElementById('paste-input').focus();
+    return;
+  }
+  if (!typing && e.key === '/') {
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
+});
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+init();
+</script>
+<datalist id="category-options"></datalist>
+</body>
+</html>

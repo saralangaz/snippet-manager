@@ -1,0 +1,129 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            asset_name: Snippet-Manager-macOS.zip
+          - os: windows-latest
+            asset_name: Snippet-Manager-Windows.zip
+          - os: ubuntu-latest
+            asset_name: Snippet-Manager-Linux.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # PyInstaller can't cross-compile, so each OS builds and packages its
+      # own native artifact — that's the whole point of the matrix.
+
+      - name: Install Linux GUI dependencies (webkit2gtk for pywebview)
+        if: runner.os == 'Linux'
+        # The webkit2gtk GI binding package name has changed across Ubuntu
+        # releases (4.0 vs 4.1) and ubuntu-latest is a moving target, so try
+        # the current name first and fall back rather than hard-failing the
+        # whole job on a package rename.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+            libgtk-3-dev libcairo2-dev libgirepository1.0-dev pkg-config python3-dev
+          sudo apt-get install -y gir1.2-webkit2-4.1 || sudo apt-get install -y gir1.2-webkit2-4.0
+
+      - name: Set up Python (macOS / Windows)
+        if: runner.os != 'Linux'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create venv (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: python -m venv .venv
+
+      # Linux uses the system python3 + --system-site-packages so the
+      # apt-installed PyGObject/WebKit2 GTK bindings are importable inside
+      # the venv (pip alone can't provide those system GUI bindings).
+      - name: Create venv (Linux)
+        if: runner.os == 'Linux'
+        run: python3 -m venv --system-site-packages .venv
+
+      - name: Install dependencies (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .venv\Scripts\Activate.ps1
+          pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Build (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          source .venv/bin/activate
+          python build.py
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .venv\Scripts\Activate.ps1
+          python build.py
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r "../${{ matrix.asset_name }}" "Snippet Manager.app"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/Snippet Manager.exe" -DestinationPath "${{ matrix.asset_name }}"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          zip "../${{ matrix.asset_name }}" "Snippet Manager"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Many repos now default GITHUB_TOKEN to read-only; softprops/action-gh-release
+    # needs write access to create the release and upload assets, so this is
+    # explicit rather than relying on the repo's default token permissions.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
