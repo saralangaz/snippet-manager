@@ -10,7 +10,7 @@ double-click and go, no Python install required.
 
 - **macOS**: unzip, then see [First launch on macOS](#first-launch-on-macos) below.
 - **Windows**: unzip, run `Snippet Manager.exe`, see [First launch on Windows](#first-launch-on-windows).
-- **Linux**: unzip, `chmod +x "Snippet Manager"`, run it.
+- **Linux**: unzip, `chmod +x "Snippet Manager"`, run it. See [First launch on Linux](#first-launch-on-linux) below — most systems need one extra package install first.
 
 ### First launch on macOS
 
@@ -31,6 +31,29 @@ signed with a paid code-signing certificate. To run it:
 2. Click **Run anyway**.
 
 This is expected for unsigned open-source tools — you're not doing anything wrong.
+
+### First launch on Linux
+
+The app opens a native window using your system's GTK/WebKit libraries —
+PyInstaller can't bundle those (they're OS-level shared libraries, not
+Python packages), so most systems need them installed once. If you see:
+
+```
+webview.errors.WebViewException: You must have either QT or GTK with Python
+extensions installed in order to use pywebview
+```
+
+install the GTK bindings:
+
+```
+sudo apt update
+sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+  gir1.2-webkit2-4.1 libgtk-3-0 libwebkit2gtk-4.1-0
+```
+
+On older distros where `gir1.2-webkit2-4.1` / `libwebkit2gtk-4.1-0` aren't
+found, use the `-4.0` versions of both instead. Then run it again — no
+reinstall of the app itself needed.
 
 ## Running from source
 
