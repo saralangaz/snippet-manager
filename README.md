@@ -129,7 +129,7 @@ dropped.
 - `N` — open the quick-add bar
 - `+` button next to search — same as `N`
 - `⇪` button next to search — open Import
-- `Ctrl/Cmd + Enter` in the review/import dialog — save
+- `Ctrl/Cmd + Enter` in the review dialog — save
 - `Enter` in the "use" dialog — copy resolved command
 - `Esc` — close any open dialog
 
