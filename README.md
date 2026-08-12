@@ -3,6 +3,8 @@
 A standalone, native-window snippet vault. Paste a command, get it back with
 one click — no browser tab, no terminal, own local data file.
 
+![Snippet Manager preview](preview.png)
+
 ## Download (recommended)
 
 Grab the build for your OS from the [Releases page](../../releases) —
